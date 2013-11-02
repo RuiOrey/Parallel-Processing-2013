@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
   int numtasks, rank, errorcode, i, j, tag1, tag2, src, dest, offset, chunksize; 
   float mysum, sum;
   MPI_Status status;
-  
+   
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -46,9 +46,11 @@ int main(int argc, char *argv[]) {
       src = i;
       MPI_Recv(&offset, 1, MPI_INT, src, tag1, MPI_COMM_WORLD, &status);
       MPI_Recv(&data[offset], chunksize, MPI_FLOAT, src, tag2, MPI_COMM_WORLD, &status);
-      MPI_Recv(&mysum, 1, MPI_FLOAT, src, MPI_SUM, MPI_COMM_WORLD, &status);
-      sum += mysum;
+            //MPI_Recv(&mysum, 1, MPI_FLOAT, src, MPI_SUM, MPI_COMM_WORLD, &status);
+      //sum += mysum;
     }
+    MPI_Reduce(&mysum, &sum, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+
     printf("\nResults\n");
     offset = 0;
     for (i = 0; i < numtasks; i++) {
