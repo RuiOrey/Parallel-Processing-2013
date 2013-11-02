@@ -1,4 +1,4 @@
-Parallel-Processing-2013
-========================
+Parallel-and-Distributed-Programming
+====================================
 
-Parallel Processing 2013
+Repositorio para os trabalhos da disciplina de PPD
