@@ -36,6 +36,7 @@ int main(int argc, char *argv[]) {
     for (dest = 1; dest < numtasks; dest++) {
       MPI_Send(&offset, 1, MPI_INT, dest, tag1, MPI_COMM_WORLD);
       MPI_Send(&data[offset], chunksize, MPI_FLOAT, dest, tag2, MPI_COMM_WORLD);
+      printf("%f\n",data[offset]*chunksize); 
       printf("Sent %d elements to task %d offset = %d\n", chunksize, dest, offset);
       offset = offset + chunksize;
     }
