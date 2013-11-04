@@ -149,28 +149,35 @@ main(int argc, char **argv)
    const int rows = size_graph / size;
 
    // transmit pagerank vector
-   MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
+   int temp_iterator;
    double *submatrix = (double *)malloc(sizeof(double)*size_graph * rows);
    double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
 
-   MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,
+
+   // cycle for iterators 
+   for(temp_iterator=0;temp_iterator<iterations;temp_iterator++)
+   { 
+      MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+
+
+      MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,
          MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
    // multiply submatrix
-   int i, j;
-   for(i = 0; i < rows; ++i) {
-      double acc = 0.0;
-      for(j = 0; j < size_graph; ++j) {
-         acc += submatrix[POS(i, j)] * pagerank_vector[j];
+      int i, j;
+      for(i = 0; i < rows; ++i) {
+         double acc = 0.0;
+         for(j = 0; j < size_graph; ++j) {
+            acc += submatrix[POS(i, j)] * pagerank_vector[j];
+         }
+         partial_pagerank_vector[i] = acc;
       }
-      partial_pagerank_vector[i] = acc;
+
+      MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+      if(rank == 0)
+         print_pagerank_vector();
    }
-
-   MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-   if(rank == 0)
-      print_pagerank_vector();
-
    MPI_Finalize();
 
    // free dynamic memory
