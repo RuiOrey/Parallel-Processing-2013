@@ -17,12 +17,7 @@ static int size_graph = 0;
 // of memory, we need to use this macro to access a position of the matrix
 #define POS(ROW, COL) ((ROW) * size_graph + (COL))
 
-static void
-read_file(const char *file)
-{
-   // here we read the file and create the transition matrix and pagerank vector
-   // TODO
-}
+
 
 static void
 print_transition_matrix(void)
@@ -65,6 +60,7 @@ allocate_pagerank_vector(void)
    assert(pagerank_vector == NULL);
    pagerank_vector = (double*)malloc(sizeof(double)*size_graph);
 }
+
 
 static void
 use_dummy_graph(double damping)
@@ -116,9 +112,79 @@ use_dummy_graph(double damping)
 
    
 
-  
 
 
+
+}
+
+void extract_int ( char *line ) {
+    int num, i = 0, len;
+    sscanf( line, "%d%n", &num, &len);
+    printf("%d",num);
+    line += len+1;
+    while ( sscanf( line, "%d%n", &num, &len) == 1 ) {
+        printf( "Number %d is %d\n", i, num );
+        line += len;    // step past the number we found
+        i++;            // increment our count of the number of values found
+    }
+}
+
+static int
+read_file(const char *fname,double damping)
+{
+   FILE *in;
+   FILE *file;
+   if (file = fopen(fname, "r"))
+     {    
+      int i,j;
+      //gets size
+      char sizetemp[1024];
+      fgets(sizetemp,sizeof(sizetemp),file);
+      size_graph=atoi(sizetemp);
+
+      //calculates page_rank and transition matrix
+      const double initial_pagerank = 1.0 / (double)size_graph;
+      allocate_pagerank_vector();
+      transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
+      for(i = 0; i < size_graph; ++i) {
+         pagerank_vector[i] = initial_pagerank;
+      }
+
+      printf("%d\n",size_graph);
+      
+      // vai ignorar o 1º numero e : e ler para cada linha as ocorrencias dos outros numeros e contar
+      
+
+
+
+      //depois vai popular uma matriz em que para cada ocorrencia de um numero mete o valor achado 1/V
+
+
+      while (fgets(sizetemp, sizeof(sizetemp), file)) {
+            extract_int(sizetemp); 
+              /* note that fgets don't strip the terminating \n, checking its
+                 presence would allow to handle lines longer that sizeof(line) */
+              //printf("%s", line); 
+      }
+      fclose(file);
+      printf("exists!\n");
+        //sleep(2);
+
+
+   }
+   else{
+     printf("File does not exist! Exit\n");
+
+     return 0;
+  }
+  size_graph = 4;
+
+  const double initial_pagerank = 1.0 / (double)size_graph;
+
+
+
+   // here we read the file and create the transition matrix and pagerank vector
+   // TODO
 }
 
 int
@@ -133,6 +199,7 @@ main(int argc, char **argv)
    const double damping = atof(argv[2]);
    const int iterations = atoi(argv[3]);
    const char *method = argv[4];
+   
 
    if(damping <= 0.0 || damping >= 1.0) {
       fprintf(stderr, "Damping factor must be between 0.0 and 1.0\n");
@@ -144,7 +211,7 @@ main(int argc, char **argv)
    }
 
    int rank, size;
-   bool converge= false;
+
    
    MPI_Init(&argc, &argv);
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -157,8 +224,9 @@ main(int argc, char **argv)
       printf("Damping: %lf\n", damping);
       printf("Iterations: %d\n", iterations);
 
-      // read_file(file);
-      use_dummy_graph(damping);
+      assert(read_file(file,damping)!=0);
+      
+      //use_dummy_graph(damping);
       print_transition_matrix();
       print_pagerank_vector();
 
@@ -167,7 +235,7 @@ main(int argc, char **argv)
    }
 
    MPI_Bcast(&size_graph, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   MPI_Bcast(&converge, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+   //MPI_Bcast(&converge, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
 
    // non zero processes have not allocated their pagerank vector yet
    if(rank != 0)
@@ -186,7 +254,8 @@ main(int argc, char **argv)
 
    while(temp_iterator<iterations)
    { 
-      
+      bool converge;
+      bool converge_temp=false;
       MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
       /*
@@ -195,14 +264,16 @@ main(int argc, char **argv)
       MPI_Bcast sends the same piece of data to all processes while MPI_Scatter sends chunks of an 
       array to different processes. Check out the illustration below for further clarification.
       */
-      int converge_temp=1;
+
       MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,
          MPI_DOUBLE, 0, MPI_COMM_WORLD);
       int numbers=0;
-   // multiply submatrix
+      
+
+      // multiply submatrix
       int i, j;
       for(i = 0; i < rows; ++i) {
-         
+
          double acc = 0.0;
          for(j = 0; j < size_graph; ++j) {
             acc += submatrix[POS(i, j)] * pagerank_vector[j];
@@ -233,8 +304,9 @@ main(int argc, char **argv)
          
       }
       temp_iterator++;
-      MPI_Barrier(MPI_COMM_WORLD);
-      MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
+      
+      //MPI_Barrier(MPI_COMM_WORLD);
+      //MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
 
       if (converge==1) {
          printf("Values Converged at iteration %d!\n",temp_iterator);
@@ -254,5 +326,5 @@ main(int argc, char **argv)
       {free(transition_matrix);
       }
 
-   return EXIT_SUCCESS;
-}
+      return EXIT_SUCCESS;
+   }
