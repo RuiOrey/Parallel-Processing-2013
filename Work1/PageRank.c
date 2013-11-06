@@ -11,6 +11,7 @@ static double *transition_matrix = NULL;
 //static double *damping_matrix = NULL;
 static double *pagerank_vector = NULL;
 static int size_graph = 0;
+static int *values_occurrences=NULL;
 
 
 // since we dynamically allocate our matrix data in a contiguous region
@@ -116,80 +117,118 @@ use_dummy_graph(double damping)
 
 
 }
+/*
+void generate_transition_matrix(char* line, double damping){
+   int i,j, len;
+   int num;
 
-void extract_int ( char *line ) {
-    int num, i = 0, len;
-    sscanf( line, "%d%n", &num, &len);
-    printf("%d",num);
-    line += len+1;
-    while ( sscanf( line, "%d%n", &num, &len) == 1 ) {
-        printf( "Number %d is %d\n", i, num );
-        line += len;    // step past the number we found
-        i++;            // increment our count of the number of values found
-    }
-}
+   const double initial_pagerank = 1.0 / (double)size_graph;
+   const double damping_value=1*initial_pagerank*damping;
+   const double damping_inverse=1-damping;
 
-static int
-read_file(const char *fname,double damping)
-{
-   FILE *in;
-   FILE *file;
-   if (file = fopen(fname, "r"))
-     {    
-      int i,j;
-      //gets size
-      char sizetemp[1024];
-      fgets(sizetemp,sizeof(sizetemp),file);
-      size_graph=atoi(sizetemp);
+   for (i = 0;i<size_graph;i++)
+      for ( j=0;j<size_graph;j++){
+         if (values_occurrences[j]!=0)
+            transition_matrix[POS(i,j)]= ((1/values_occurrences[j])*damping_inverse)+damping_value;
+         else
+            transition_matrix[POS(i,j)]= damping_value;
 
-      //calculates page_rank and transition matrix
-      const double initial_pagerank = 1.0 / (double)size_graph;
-      allocate_pagerank_vector();
-      transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
-      for(i = 0; i < size_graph; ++i) {
-         pagerank_vector[i] = initial_pagerank;
+         printf("Position %d %d : %f\n",i,j,transition_matrix[POS(i,j)]);
       }
-
-      printf("%d\n",size_graph);
-      
-      // vai ignorar o 1º numero e : e ler para cada linha as ocorrencias dos outros numeros e contar
-      
-
-
-
-      //depois vai popular uma matriz em que para cada ocorrencia de um numero mete o valor achado 1/V
-
-
-      while (fgets(sizetemp, sizeof(sizetemp), file)) {
-            extract_int(sizetemp); 
-              /* note that fgets don't strip the terminating \n, checking its
-                 presence would allow to handle lines longer that sizeof(line) */
-              //printf("%s", line); 
-      }
-      fclose(file);
-      printf("exists!\n");
-        //sleep(2);
-
 
    }
-   else{
-     printf("File does not exist! Exit\n");
+*/
+   void extract_occurrences ( char *line,double damping) {
 
-     return 0;
-  }
-  size_graph = 4;
+      int i = 0, len,count=0;
+      int line_num,num;
+      const double initial_pagerank = 1.0 / (double)size_graph;
+      const double damping_value=(double) initial_pagerank*damping;
+      const double damping_inverse=(double)1.0-damping;
 
-  const double initial_pagerank = 1.0 / (double)size_graph;
+      sscanf( line, "%d%n", &line_num, &len);
+      //printf("Line %d\n",line_num);
+      line += len+1;
+      while ( sscanf( line, "%d%n", &num, &len) == 1 ) {
+         count++;
+         transition_matrix[POS(num,line_num)]= 1.0;
+         line+=len;
+      }
+      //printf("line %d : 1/%d\n",line_num,count);
+      const float weight= (float) 1.0/count;
+      //printf ("wight:%f damping_value:%f",weight,damping_value);
+      for(i=0;i<size_graph;i++)
+      {
+         if(transition_matrix[POS(i,line_num)]==1.0){
+            transition_matrix[POS(i,line_num)]=((weight*damping_inverse)+damping_value);
+          //  printf("! %f + %f ",(double)weight*damping_inverse,(double)damping_value);
+         }
+         else{
+            transition_matrix[POS(i,line_num)]=(double) (damping_value);
+          //  printf("? %f",damping_value);
+         }
+        // printf(" %f",transition_matrix[POS(i,line_num)]);
+      } 
+      //printf("\n");
+   } 
+
+   static int
+   read_file(const char *fname,double damping)
+   {
+      
+      FILE *file;
+      if (file = fopen(fname, "r"))
+      {    
+         int i,j,total;
+         //gets size
+         char line[1024];
+         fgets(line,sizeof(line),file);
+         size_graph=atoi(line);
+
+         //calculates page_rank and transition matrix
+         const double initial_pagerank = 1.0 / (double)size_graph;
+         allocate_pagerank_vector();
+         
+         for(i = 0; i < size_graph; ++i) {
+            pagerank_vector[i] = initial_pagerank;
+         }
+
+         printf("%d\n",size_graph);
+
+      // vai ignorar o 1º numero e : e ler para cada linha as ocorrencias dos outros numeros e contar
+      //depois vai popular uma matriz em que para cada ocorrencia de um numero mete o valor achado 1/V
+      //TODO change line to array of lines
+
+         transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
+
+         while (fgets(line, sizeof(line), file)) {
+            extract_occurrences(line,damping); 
+         }
+
+
+
+         fclose(file);   
+         //sleep(3);
+         return 1;
+
+      }
+      else{
+       printf("File does not exist! Exit\n");
+
+       return 0;
+    }
+    
+
 
 
 
    // here we read the file and create the transition matrix and pagerank vector
    // TODO
-}
+ }
 
-int
-main(int argc, char **argv)
-{
+ int
+ main(int argc, char **argv)
+ {
    if(argc != 5) {
       fprintf(stderr, "usage: ./pagerank <graph file> <damping factor> <iterations> <method>\n");
       return EXIT_FAILURE;
@@ -232,10 +271,10 @@ main(int argc, char **argv)
 
       // we ensure that the transition matrix can be evenly divided
       assert(size_graph % size == 0);
-   }
+   } 
 
    MPI_Bcast(&size_graph, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   //MPI_Bcast(&converge, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+   //MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
    // non zero processes have not allocated their pagerank vector yet
    if(rank != 0)
@@ -252,10 +291,12 @@ main(int argc, char **argv)
 
    // cycle for iterators 
 
-   while(temp_iterator<iterations)
+   int converge=0;
+   int converge_temp=0;
+   
+   while(converge==0)
    { 
-      bool converge;
-      bool converge_temp=false;
+      converge_temp=1;
       MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
       /*
@@ -279,9 +320,9 @@ main(int argc, char **argv)
             acc += submatrix[POS(i, j)] * pagerank_vector[j];
          }
          partial_pagerank_vector[i] = acc;
-
+         converge_temp = converge_temp * (int) (fabs(pagerank_vector[i]-acc)<0.0000009);
          //covergence test - working by reduce
-         converge_temp = converge_temp && (fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009);
+         
          
          // debug messages
          printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009,converge_temp);
@@ -305,12 +346,12 @@ main(int argc, char **argv)
       }
       temp_iterator++;
       
-      //MPI_Barrier(MPI_COMM_WORLD);
+      MPI_Barrier(MPI_COMM_WORLD);
       //MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
 
-      if (converge==1) {
+      if (converge_temp==1) {
          printf("Values Converged at iteration %d!\n",temp_iterator);
-         temp_iterator=iterations; 
+         //temp_iterator=iterations; 
       }
 
    }
