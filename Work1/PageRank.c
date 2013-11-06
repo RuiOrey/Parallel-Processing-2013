@@ -12,7 +12,9 @@ static double *transition_matrix = NULL;
 static double *pagerank_vector = NULL;
 static int size_graph = 0;
 static int *values_occurrences=NULL;
-
+static int converge;
+static int converge_temp=1;  
+static int temp_iterator;
 
 // since we dynamically allocate our matrix data in a contiguous region
 // of memory, we need to use this macro to access a position of the matrix
@@ -271,10 +273,16 @@ void generate_transition_matrix(char* line, double damping){
 
       // we ensure that the transition matrix can be evenly divided
       assert(size_graph % size == 0);
+
+      converge=0;
+      converge_temp=0;
+      temp_iterator=0;
    } 
 
    MPI_Bcast(&size_graph, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   //MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+   MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+   MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
+   MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
    // non zero processes have not allocated their pagerank vector yet
    if(rank != 0)
@@ -284,19 +292,18 @@ void generate_transition_matrix(char* line, double damping){
    const int rows = size_graph / size;
 
    // transmit pagerank vector
-   int temp_iterator=0;
+   
    double *submatrix = (double *)malloc(sizeof(double)*size_graph * rows);
    double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
 
 
    // cycle for iterators 
 
-   int converge=0;
-   int converge_temp=0;
-   
-   while(converge==0)
+
+   while(converge==0 && temp_iterator< iterations)
    { 
-      converge_temp=1;
+
+      
       MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
       /*
@@ -313,21 +320,34 @@ void generate_transition_matrix(char* line, double damping){
 
       // multiply submatrix
       int i, j;
+      MPI_Barrier(MPI_COMM_WORLD);
+
       for(i = 0; i < rows; ++i) {
 
          double acc = 0.0;
+         converge_temp=1.0;
+         printf("converge_temp:%d\n",converge_temp);
          for(j = 0; j < size_graph; ++j) {
             acc += submatrix[POS(i, j)] * pagerank_vector[j];
          }
+
+         printf("old:%f new:%f \n ",pagerank_vector[numbers+rows*rank],acc);
          partial_pagerank_vector[i] = acc;
-         converge_temp = converge_temp * (int) (fabs(pagerank_vector[i]-acc)<0.0000009);
+         printf("converge_temp:%d logical %f\n",converge_temp,(float)(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009));
+         converge_temp= converge_temp * (int) (fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009);
          //covergence test - working by reduce
          
          
          // debug messages
-         printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009,converge_temp);
+         printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009),converge_temp);
          numbers++;
+
+
+            
+         MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+      
       }
+     MPI_Barrier(MPI_COMM_WORLD);
 
       /*
       MPI_Gather is the inverse of MPI_Scatter. 
@@ -340,19 +360,28 @@ void generate_transition_matrix(char* line, double damping){
       
       MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
       
+      MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
       if(rank == 0){
          print_pagerank_vector();
-         
-      }
-      temp_iterator++;
-      
-      MPI_Barrier(MPI_COMM_WORLD);
-      //MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
-
-      if (converge_temp==1) {
+         temp_iterator++;
+         printf("Iteration nº%d\n",temp_iterator);
+         if (converge==1) {
          printf("Values Converged at iteration %d!\n",temp_iterator);
-         //temp_iterator=iterations; 
+         //temp_iterator=iterations;
+         converge_temp=1;
+       
+
       }
+
+      }
+      
+      MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+      MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+      
+
+
 
    }
 
