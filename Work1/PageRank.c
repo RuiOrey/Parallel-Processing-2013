@@ -7,14 +7,20 @@
 #include <stdbool.h>
 #include <math.h>
 
+
 static double *transition_matrix = NULL;
 //static double *damping_matrix = NULL;
 static double *pagerank_vector = NULL;
 static int size_graph = 0;
 static int *values_occurrences=NULL;
 static int converge;
-static int converge_temp=1;  
+static int converge_temp=1;
 static int temp_iterator;
+static int method_flag=0;
+static int q=0;
+static int n_fox=0;
+MPI_Comm new_comm,row,col;
+MPI_Datatype submatrix_type;
 
 // since we dynamically allocate our matrix data in a contiguous region
 // of memory, we need to use this macro to access a position of the matrix
@@ -99,21 +105,21 @@ use_dummy_graph(double damping)
    transition_matrix[POS(3, 2)] = 0.0;
    transition_matrix[POS(3, 3)] = 0.0;
 
-   
-   //damping variables
+
+//damping variables
    const double damping_value=1*initial_pagerank*damping;
    const double damping_inverse=1-damping;
-   // Generates matrix for dumping - maybe not needed full matrix
-   //damping_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
+// Generates matrix for dumping - maybe not needed full matrix
+//damping_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
    for (i=0;i<size_graph;i++){
       for (j=0;j<size_graph;j++){
          printf("Position %d %d : %f\n",i,j,transition_matrix[POS(i,j)]);
-         transition_matrix[POS(i,j)]=transition_matrix[POS(i,j)]*damping_inverse + damping_value; 
+         transition_matrix[POS(i,j)]=transition_matrix[POS(i,j)]*damping_inverse + damping_value;
          printf("Position %d %d : %f\n",i,j,transition_matrix[POS(i,j)]);
       }
    }
 
-   
+
 
 
 
@@ -121,116 +127,400 @@ use_dummy_graph(double damping)
 }
 /*
 void generate_transition_matrix(char* line, double damping){
-   int i,j, len;
-   int num;
+int i,j, len;
+int num;
 
-   const double initial_pagerank = 1.0 / (double)size_graph;
-   const double damping_value=1*initial_pagerank*damping;
-   const double damping_inverse=1-damping;
+const double initial_pagerank = 1.0 / (double)size_graph;
+const double damping_value=1*initial_pagerank*damping;
+const double damping_inverse=1-damping;
 
-   for (i = 0;i<size_graph;i++)
-      for ( j=0;j<size_graph;j++){
-         if (values_occurrences[j]!=0)
-            transition_matrix[POS(i,j)]= ((1/values_occurrences[j])*damping_inverse)+damping_value;
-         else
-            transition_matrix[POS(i,j)]= damping_value;
+for (i = 0;i<size_graph;i++)
+for ( j=0;j<size_graph;j++){
+if (values_occurrences[j]!=0)
+transition_matrix[POS(i,j)]= ((1/values_occurrences[j])*damping_inverse)+damping_value;
+else
+transition_matrix[POS(i,j)]= damping_value;
 
-         printf("Position %d %d : %f\n",i,j,transition_matrix[POS(i,j)]);
-      }
+printf("Position %d %d : %f\n",i,j,transition_matrix[POS(i,j)]);
+}
 
-   }
+}
 */
-   void extract_occurrences ( char *line,double damping) {
+void extract_occurrences ( char *line,double damping) {
 
-      int i = 0, len,count=0;
-      int line_num,num;
-      const double initial_pagerank = 1.0 / (double)size_graph;
-      const double damping_value=(double) initial_pagerank*damping;
-      const double damping_inverse=(double)1.0-damping;
+   int i = 0, len,count=0;
+   int line_num,num;
+   const double initial_pagerank = 1.0 / (double)size_graph;
+   const double damping_value=(double) initial_pagerank*damping;
+   const double damping_inverse=(double)1.0-damping;
 
-      sscanf( line, "%d%n", &line_num, &len);
-      //printf("Line %d\n",line_num);
-      line += len+1;
-      while ( sscanf( line, "%d%n", &num, &len) == 1 ) {
-         count++;
-         transition_matrix[POS(num,line_num)]= 1.0;
-         line+=len;
-      }
-      //printf("line %d : 1/%d\n",line_num,count);
-      const float weight= (float) 1.0/count;
-      //printf ("wight:%f damping_value:%f",weight,damping_value);
-      for(i=0;i<size_graph;i++)
-      {
-         if(transition_matrix[POS(i,line_num)]==1.0){
-            transition_matrix[POS(i,line_num)]=((weight*damping_inverse)+damping_value);
-          //  printf("! %f + %f ",(double)weight*damping_inverse,(double)damping_value);
-         }
-         else{
-            transition_matrix[POS(i,line_num)]=(double) (damping_value);
-          //  printf("? %f",damping_value);
-         }
-        // printf(" %f",transition_matrix[POS(i,line_num)]);
-      } 
-      //printf("\n");
-   } 
-
-   static int
-   read_file(const char *fname,double damping)
+   sscanf( line, "%d%n", &line_num, &len);
+//printf("Line %d\n",line_num);
+   line += len+1;
+   while ( sscanf( line, "%d%n", &num, &len) == 1 ) {
+      count++;
+      transition_matrix[POS(num,line_num)]= 1.0;
+      line+=len;
+   }
+//printf("line %d : 1/%d\n",line_num,count);
+   const float weight= (float) 1.0/count;
+//printf ("wight:%f damping_value:%f",weight,damping_value);
+   for(i=0;i<size_graph;i++)
    {
-      
-      FILE *file;
-      if (file = fopen(fname, "r"))
-      {    
-         int i,j,total;
-         //gets size
-         char line[1024];
-         fgets(line,sizeof(line),file);
-         size_graph=atoi(line);
-
-         //calculates page_rank and transition matrix
-         const double initial_pagerank = 1.0 / (double)size_graph;
-         allocate_pagerank_vector();
-         
-         for(i = 0; i < size_graph; ++i) {
-            pagerank_vector[i] = initial_pagerank;
-         }
-
-         printf("%d\n",size_graph);
-
-      // vai ignorar o 1º numero e : e ler para cada linha as ocorrencias dos outros numeros e contar
-      //depois vai popular uma matriz em que para cada ocorrencia de um numero mete o valor achado 1/V
-      //TODO change line to array of lines
-
-         transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
-
-         while (fgets(line, sizeof(line), file)) {
-            extract_occurrences(line,damping); 
-         }
-
-
-
-         fclose(file);   
-         //sleep(3);
-         return 1;
-
+      if(transition_matrix[POS(i,line_num)]==1.0){
+         transition_matrix[POS(i,line_num)]=((weight*damping_inverse)+damping_value);
+//  printf("! %f + %f ",(double)weight*damping_inverse,(double)damping_value);
       }
       else{
-       printf("File does not exist! Exit\n");
+         transition_matrix[POS(i,line_num)]=(double) (damping_value);
+//  printf("? %f",damping_value);
+      }
+// printf(" %f",transition_matrix[POS(i,line_num)]);
+   }
+//printf("\n");
+}
 
-       return 0;
-    }
-    
+static int
+read_file(const char *fname,double damping)
+{
+
+   FILE *file;
+   if (file = fopen(fname, "r"))
+   {
+      int i,j,total;
+//gets size
+      char line[1024];
+      fgets(line,sizeof(line),file);
+      size_graph=atoi(line);
+      printf("q%d size_graph:%d mod:%d\n",q,size_graph,size_graph%q);
+      if (method_flag==1){
+         assert((size_graph %q) == 0.0);
+         n_fox=size_graph/q;
+      }
+
+//calculates page_rank and transition matrix
+      const double initial_pagerank = 1.0 / (double)size_graph;
+      allocate_pagerank_vector();
+
+      for(i = 0; i < size_graph; ++i) {
+         pagerank_vector[i] = initial_pagerank;
+      }
+
+      printf("%d\n",size_graph);
+
+// vai ignorar o 1º numero e : e ler para cada linha as ocorrencias dos outros numeros e contar
+//depois vai popular uma matriz em que para cada ocorrencia de um numero mete o valor achado 1/V
+//TODO change line to array of lines
+
+      transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
+
+      while (fgets(line, sizeof(line), file)) {
+         extract_occurrences(line,damping);
+      }
+
+
+
+      fclose(file);
+//sleep(3);
+      return 1;
+
+   }
+   else{
+      printf("File does not exist! Exit\n");
+
+      return 0;
+   }
 
 
 
 
-   // here we read the file and create the transition matrix and pagerank vector
-   // TODO
- }
 
- int
- main(int argc, char **argv)
- {
+// here we read the file and create the transition matrix and pagerank vector
+// TODO
+}
+
+void normal_method(int size,int iterations, int rank){
+
+
+// number of rows that each process is getting
+   const int rows = size_graph / size;
+
+// transmit pagerank vector
+
+   double *submatrix = (double *)malloc(sizeof(double)*size_graph * rows);
+   double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
+
+
+// cycle for iterators
+
+
+   while(converge==0 && temp_iterator< iterations)
+   {
+
+
+      MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+/*
+MPI_Scatter involves a designated root process sending data to all processes in a communicator.
+The primary difference between MPI_Bcast and MPI_Scatter is small but important.
+MPI_Bcast sends the same piece of data to all processes while MPI_Scatter sends chunks of an
+array to different processes. Check out the illustration below for further clarification.
+*/
+
+MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,
+   MPI_DOUBLE, 0, MPI_COMM_WORLD);
+int numbers=0;
+
+
+// multiply submatrix
+int i, j;
+MPI_Barrier(MPI_COMM_WORLD);
+
+for(i = 0; i < rows; ++i) {
+
+   double acc = 0.0;
+   converge_temp=1.0;
+//printf("converge_temp:%d\n",converge_temp);
+   for(j = 0; j < size_graph; ++j) {
+      acc += submatrix[POS(i, j)] * pagerank_vector[j];
+   }
+
+//printf("old:%f new:%f \n ",pagerank_vector[numbers+rows*rank],acc);
+   partial_pagerank_vector[i] = acc;
+//printf("converge_temp:%d logical %f\n",converge_temp,(float)(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009));
+   converge_temp= converge_temp * (int) (fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009);
+//covergence test - working by reduce
+
+
+// debug messages
+//printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009),converge_temp);
+   numbers++;
+
+
+
+   MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+}
+MPI_Barrier(MPI_COMM_WORLD);
+
+/*
+MPI_Gather is the inverse of MPI_Scatter.
+Instead of spreading elements from one process to many processes, MPI_Gather takes elements
+from many processes and gathers them to one single process. This routine is highly useful to
+many parallel algorithms, such as parallel sorting and searching.
+*/
+//used for converge
+
+
+MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
+if(rank == 0){
+   print_pagerank_vector();
+   temp_iterator++;
+   printf("Iteration nº%d\n",temp_iterator);
+   if (converge==1) {
+      printf("Values Converged at iteration %d!\n",temp_iterator);
+//temp_iterator=iterations;
+      converge_temp=1;
+
+
+   }
+
+}
+
+MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
+MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+
+
+
+}
+
+printf("here");
+MPI_Finalize();
+
+// free dynamic memory
+free(submatrix);
+free(partial_pagerank_vector);
+free(pagerank_vector);
+if(rank == 0)
+   {free(transition_matrix);
+   }
+   printf("NORMAL METHOD");
+}
+
+
+
+void fox_method(int size,int iterations, int rank, int q){
+//MPI_Scatterv
+
+
+
+   int rankcol, rankline, to, from;
+
+
+
+
+   MPI_Comm_rank(col, &rankcol);
+   MPI_Comm_rank(row, &rankline);
+   printf("rank:%d col:%d line:%d",rank,rankcol,rankline);
+
+   int* displacements=(int*)malloc(sizeof(int)*q);
+   int* scounts=(int*)malloc(sizeof(int)*q);
+
+/*
+if(rank==0){
+
+for (int k=1,k<= q;k++){
+   displacements[k] = (k-1) * stride;
+   scounts[k] = 25;}
+}
+
+/*MPI_Bcast();
+
+call mpi_scatterv(sbuf, scounts, displs, MPI_REAL, a, 25, & 
+      MPI_REAL, root, comm, ierr)
+
+*/
+
+
+//MPI_Scatterv
+// TODO DELETE THIS number of rows that each process is getting
+const int rows = size_graph / size;
+
+// transmit pagerank vector
+
+double *submatrixA = (double *)malloc(sizeof(double)*n_fox * n_fox);
+double *submatrixB = (double *)malloc(sizeof(double)*n_fox * n_fox);
+double *submatrixC = (double *)malloc(sizeof(double)*n_fox * n_fox);
+double *submatrix = (double *)malloc(sizeof(double)*n_fox * n_fox);
+
+
+MPI_Scatter(transition_matrix, 1, submatrix_type, submatrixA, n_fox*n_fox,MPI_DOUBLE, 0, new_comm);
+//MPI_Scatter(void* send_data, int send_count, MPI_Datatype send_datatype, 
+//      void* recv_data, int recv_count, MPI_Datatype recv_datatype, int root, MPI_Comm communicator)
+
+
+   //TODO DELETE THIS
+double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
+
+
+// cycle for iterators
+
+
+while(temp_iterator< iterations)
+{
+
+
+   MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+/*
+MPI_Scatter involves a designated root process sending data to all processes in a communicator.
+The primary difference between MPI_Bcast and MPI_Scatter is small but important.
+MPI_Bcast sends the same piece of data to all processes while MPI_Scatter sends chunks of an
+array to different processes. Check out the illustration below for further clarification.
+*/
+
+MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,MPI_DOUBLE, 0, MPI_COMM_WORLD);
+int numbers=0;
+
+
+// multiply submatrix
+int i, j;
+MPI_Barrier(MPI_COMM_WORLD);
+
+for(i = 0; i < rows; ++i) {
+
+   double acc = 0.0;
+   converge_temp=1.0;
+//printf("converge_temp:%d\n",converge_temp);
+   for(j = 0; j < size_graph; ++j) {
+      acc += submatrix[POS(i, j)] * pagerank_vector[j];
+   }
+
+//printf("old:%f new:%f \n ",pagerank_vector[numbers+rows*rank],acc);
+   partial_pagerank_vector[i] = acc;
+//printf("converge_temp:%d logical %f\n",converge_temp,(float)(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009));
+   converge_temp= converge_temp * (int) (fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009);
+//covergence test - working by reduce
+
+
+// debug messages
+//printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009),converge_temp);
+   numbers++;
+
+
+
+   MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+}
+MPI_Barrier(MPI_COMM_WORLD);
+
+/*
+MPI_Gather is the inverse of MPI_Scatter.
+Instead of spreading elements from one process to many processes, MPI_Gather takes elements
+from many processes and gathers them to one single process. This routine is highly useful to
+many parallel algorithms, such as parallel sorting and searching.
+*/
+//used for converge
+
+
+MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
+if(rank == 0){
+   print_pagerank_vector();
+   temp_iterator++;
+   printf("Iteration nº%d\n",temp_iterator);
+   if (converge==1) {
+      printf("Values Converged at iteration %d!\n",temp_iterator);
+//temp_iterator=iterations;
+      converge_temp=1;
+
+
+   }
+
+}
+
+MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
+MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+
+
+
+}
+
+
+printf("here");
+MPI_Finalize();
+
+// free dynamic memory
+if(iterations>1){
+   free(submatrixA);
+   free(submatrixB);
+   free(submatrixC);
+   free(submatrix);
+   free(partial_pagerank_vector);
+   free(pagerank_vector);
+}
+
+if(rank == 0)
+   {free(transition_matrix);}
+ //MPI_Type_free(submatrix_type);
+printf("FOX METHOD n_fox:%d q:%d\n",n_fox,q);
+}
+
+
+
+
+int
+main(int argc, char **argv)
+{
    if(argc != 5) {
       fprintf(stderr, "usage: ./pagerank <graph file> <damping factor> <iterations> <method>\n");
       return EXIT_FAILURE;
@@ -240,7 +530,7 @@ void generate_transition_matrix(char* line, double damping){
    const double damping = atof(argv[2]);
    const int iterations = atoi(argv[3]);
    const char *method = argv[4];
-   
+
 
    if(damping <= 0.0 || damping >= 1.0) {
       fprintf(stderr, "Damping factor must be between 0.0 and 1.0\n");
@@ -251,12 +541,17 @@ void generate_transition_matrix(char* line, double damping){
       return EXIT_FAILURE;
    }
 
+   if (strcmp(method,"fox")==0)
+      method_flag=1;
+
+
    int rank, size;
 
-   
+
    MPI_Init(&argc, &argv);
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
 
    if(rank == 0) {
       printf("Rank: %d\n", rank);
@@ -265,136 +560,70 @@ void generate_transition_matrix(char* line, double damping){
       printf("Damping: %lf\n", damping);
       printf("Iterations: %d\n", iterations);
 
-      assert(read_file(file,damping)!=0);
-      
-      //use_dummy_graph(damping);
-      print_transition_matrix();
-      print_pagerank_vector();
 
-      // we ensure that the transition matrix can be evenly divided
-      assert(size_graph % size == 0);
+      if (method_flag==1){
 
-      converge=0;
-      converge_temp=0;
-      temp_iterator=0;
-   } 
+        q= (int)sqrt((double)size);
+     }
 
-   MPI_Bcast(&size_graph, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
-   MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
+     assert(read_file(file,damping)!=0);
 
-   // non zero processes have not allocated their pagerank vector yet
-   if(rank != 0)
-      allocate_pagerank_vector();
+//use_dummy_graph(damping);
+     print_transition_matrix();
+     print_pagerank_vector();
 
-   // number of rows that each process is getting
-   const int rows = size_graph / size;
+// we ensure that the transition matrix can be evenly divided
 
-   // transmit pagerank vector
+     if(method_flag!=1)
+        assert(size_graph % size == 0);
+
+     converge=0;
+     converge_temp=0;
+     temp_iterator=0;
+  }
+
+  MPI_Bcast(&size_graph, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&q, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&n_fox, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+// non zero processes have not allocated their pagerank vector yet
+  if(rank != 0)
+   allocate_pagerank_vector();
+
+if (method_flag!=1)
+   normal_method(size,iterations,rank);
+else{
+   printf("Ssadsadsaassssssssssssssssssss\n");
+
+   int ndims, reorder, ierr;
+   int dim_size[2], periods[2];
+   ndims = 2;
+   dim_size[0] = q;
+   dim_size[1] = q;
+   periods[0] = 1;
+   periods[1] = 1;
+   reorder = 1;
+
+   MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Cart_create(MPI_COMM_WORLD, ndims, dim_size,periods, reorder, &new_comm);
+   int direction[2] = { 1, 0 };
+   MPI_Barrier(MPI_COMM_WORLD);
+   MPI_Cart_sub(new_comm, direction, &row);
+   MPI_Barrier(MPI_COMM_WORLD);
+   direction[0] = 0;
+   direction[1] = 1;
+   MPI_Cart_sub(new_comm, direction, &col);
    
-   double *submatrix = (double *)malloc(sizeof(double)*size_graph * rows);
-   double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
+  MPI_Type_vector(n_fox*n_fox,n_fox,q,MPI_DOUBLE,&submatrix_type);
+   MPI_Type_commit (&submatrix_type);
+  fox_method(size,iterations,rank,q);
+
+}
 
 
-   // cycle for iterators 
+return EXIT_SUCCESS;
+}
 
-
-   while(converge==0 && temp_iterator< iterations)
-   { 
-
-      
-      MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-      /*
-      MPI_Scatter involves a designated root process sending data to all processes in a communicator. 
-      The primary difference between MPI_Bcast and MPI_Scatter is small but important. 
-      MPI_Bcast sends the same piece of data to all processes while MPI_Scatter sends chunks of an 
-      array to different processes. Check out the illustration below for further clarification.
-      */
-
-      MPI_Scatter(transition_matrix, rows*size_graph, MPI_DOUBLE, submatrix, rows*size_graph,
-         MPI_DOUBLE, 0, MPI_COMM_WORLD);
-      int numbers=0;
-      
-
-      // multiply submatrix
-      int i, j;
-      MPI_Barrier(MPI_COMM_WORLD);
-
-      for(i = 0; i < rows; ++i) {
-
-         double acc = 0.0;
-         converge_temp=1.0;
-         printf("converge_temp:%d\n",converge_temp);
-         for(j = 0; j < size_graph; ++j) {
-            acc += submatrix[POS(i, j)] * pagerank_vector[j];
-         }
-
-         printf("old:%f new:%f \n ",pagerank_vector[numbers+rows*rank],acc);
-         partial_pagerank_vector[i] = acc;
-         printf("converge_temp:%d logical %f\n",converge_temp,(float)(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009));
-         converge_temp= converge_temp * (int) (fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009);
-         //covergence test - working by reduce
-         
-         
-         // debug messages
-         printf("acc:%f item:%d rank:%d before:%f difference:%f boolean :%d converge_temp: %d \n",acc,numbers+rows*rank,rank,pagerank_vector[numbers+rows*rank],fabs(pagerank_vector[numbers+rows*rank]-acc),(fabs(pagerank_vector[numbers+rows*rank]-acc)<0.0000009),converge_temp);
-         numbers++;
-
-
-            
-         MPI_Bcast(pagerank_vector, size_graph, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-      
-      }
-     MPI_Barrier(MPI_COMM_WORLD);
-
-      /*
-      MPI_Gather is the inverse of MPI_Scatter. 
-      Instead of spreading elements from one process to many processes, MPI_Gather takes elements 
-      from many processes and gathers them to one single process. This routine is highly useful to 
-      many parallel algorithms, such as parallel sorting and searching.
-      */
-      //used for converge
-      
-      
-      MPI_Gather(partial_pagerank_vector, rows, MPI_DOUBLE, pagerank_vector, rows, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-      
-      MPI_Reduce(&converge_temp, &converge, 1,MPI_INT, MPI_PROD,0,MPI_COMM_WORLD);
-      if(rank == 0){
-         print_pagerank_vector();
-         temp_iterator++;
-         printf("Iteration nº%d\n",temp_iterator);
-         if (converge==1) {
-         printf("Values Converged at iteration %d!\n",temp_iterator);
-         //temp_iterator=iterations;
-         converge_temp=1;
-       
-
-      }
-
-      }
-      
-      MPI_Bcast(&temp_iterator, 1, MPI_INT, 0, MPI_COMM_WORLD);
-      MPI_Bcast(&converge, 1, MPI_INT, 0, MPI_COMM_WORLD);
-      MPI_Bcast(&converge_temp, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-      
-
-
-
-   }
-
-   printf("here");
-   MPI_Finalize();
-
-   // free dynamic memory
-   free(submatrix);
-   free(partial_pagerank_vector);
-   free(pagerank_vector);
-   if(rank == 0)
-      {free(transition_matrix);
-      }
-
-      return EXIT_SUCCESS;
-   }
