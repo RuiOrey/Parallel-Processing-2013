@@ -6,6 +6,7 @@
 #include <mpi.h>
 #include <stdbool.h>
 #include <math.h>
+#include <string.h>
 
 
 static double *transition_matrix = NULL;
@@ -180,8 +181,50 @@ void extract_occurrences ( char *line,double damping) {
 //printf("\n");
 }
 
+void reorder_matrix(int size){
+  double *transition_matrix_temp = (double*)malloc(sizeof(double)*size_graph*size_graph);
+  int k;
+  int line_actual,col_actual,q_actual_linha,k_counter;
+ q_actual_linha=0;                  //linha de processos
+ k_counter=0;                       //para frequencia de processos
+ int q_actual_coluna=0;             //coluna de processos
+ int position=0;
+ int colu;
+
+ int start_col_index;
+
+ printf("Enter reorder\n");
+ for (k=0;k<size;k++)
+ {
+
+   if(k_counter>q-1){
+      q_actual_linha=q_actual_linha+n_fox;
+      k_counter=0;
+   }
+
+   q_actual_coluna=abs(q_actual_linha*q-k);
+   printf("q%d k_counter%d\n",q,k_counter);
+
+      for (line_actual=0;line_actual<n_fox;line_actual++){
+   for (col_actual=0;col_actual<n_fox;col_actual++){
+ 
+          colu=k_counter*n_fox+col_actual;
+ 
+         transition_matrix_temp[position] = transition_matrix[POS(line_actual+q_actual_linha,colu)];
+         position++;
+
+         printf(" process:%d Position:%d and has contents of line %d and column %d\n",k,position,line_actual+q_actual_linha,colu);
+      }
+   }
+   k_counter++;
+}
+memcpy(transition_matrix,transition_matrix_temp,sizeof(double)*size_graph*size_graph);
+
+}
+
+
 static int
-read_file(const char *fname,double damping)
+read_file(const char *fname,double damping,int size,int rank)
 {
 
    FILE *file;
@@ -215,10 +258,16 @@ read_file(const char *fname,double damping)
       transition_matrix = (double*)malloc(sizeof(double)*size_graph*size_graph);
 
       while (fgets(line, sizeof(line), file)) {
+
          extract_occurrences(line,damping);
+         
+         
+
+
       }
 
-
+if(method_flag==1 && rank==0)
+            reorder_matrix(size);
 
       fclose(file);
 //sleep(3);
@@ -397,12 +446,17 @@ double *submatrixA = (double *)malloc(sizeof(double)*n_fox * n_fox);
 double *submatrixB = (double *)malloc(sizeof(double)*n_fox * n_fox);
 double *submatrixC = (double *)malloc(sizeof(double)*n_fox * n_fox);
 double *submatrix = (double *)malloc(sizeof(double)*n_fox * n_fox);
+int k;
 
+   MPI_Scatter(transition_matrix, n_fox*n_fox, MPI_DOUBLE, submatrixA, n_fox*n_fox,MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-MPI_Scatter(transition_matrix, 1, submatrix_type, submatrixA, n_fox*n_fox,MPI_DOUBLE, 0, new_comm);
+   printf("submatrixA[0]:%f\n",submatrixA[0]);
+
+for(k=0;k<q;k++){
+
 //MPI_Scatter(void* send_data, int send_count, MPI_Datatype send_datatype, 
 //      void* recv_data, int recv_count, MPI_Datatype recv_datatype, int root, MPI_Comm communicator)
-
+}
 
    //TODO DELETE THIS
 double *partial_pagerank_vector = (double *)malloc(sizeof(double) * rows);
@@ -565,8 +619,9 @@ main(int argc, char **argv)
 
         q= (int)sqrt((double)size);
      }
+ 
+     assert(read_file(file,damping,size,rank)!=0);
 
-     assert(read_file(file,damping)!=0);
 
 //use_dummy_graph(damping);
      print_transition_matrix();
@@ -608,7 +663,7 @@ else{
    reorder = 1;
 
    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Cart_create(MPI_COMM_WORLD, ndims, dim_size,periods, reorder, &new_comm);
+   MPI_Cart_create(MPI_COMM_WORLD, ndims, dim_size,periods, reorder, &new_comm);
    int direction[2] = { 1, 0 };
    MPI_Barrier(MPI_COMM_WORLD);
    MPI_Cart_sub(new_comm, direction, &row);
@@ -617,9 +672,9 @@ else{
    direction[1] = 1;
    MPI_Cart_sub(new_comm, direction, &col);
    
-  MPI_Type_vector(n_fox*n_fox,n_fox,q,MPI_DOUBLE,&submatrix_type);
+   MPI_Type_vector(n_fox*n_fox,n_fox,size_graph,MPI_DOUBLE,&submatrix_type);
    MPI_Type_commit (&submatrix_type);
-  fox_method(size,iterations,rank,q);
+   fox_method(size,iterations,rank,q);
 
 }
 

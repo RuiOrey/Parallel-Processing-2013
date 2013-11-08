@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
       data[i] = i * 1.0;
       sum = sum + data[i];
     }
-    printf("Initial sum = %f\n", sum);
+    printf("Initial sum = %f\n", sum );
     offset = chunksize;
     for (dest = 1; dest < numtasks; dest++) {
       MPI_Send(&offset, 1, MPI_INT, dest, tag1, MPI_COMM_WORLD);
